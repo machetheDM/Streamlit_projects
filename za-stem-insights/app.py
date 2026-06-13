@@ -31,7 +31,7 @@ import db
 
 st.set_page_config(
     page_title="ZA-STEM Insights",
-    page_icon="📊",
+    page_icon=":material/analytics:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -65,9 +65,11 @@ def sidebar(df: pd.DataFrame) -> tuple:
     page = st.sidebar.radio(
         "Navigate",
         [
-            "🏠 Overview", "📈 Trends", "🗺️ Provinces", "📚 Subjects",
-            "⚠️ At-Risk Predictor", "🔮 Forecast", "🤖 ML Models",
-            "🧩 Clusters", "🧪 Statistics", "🗄️ SQL Explorer",
+            ":material/dashboard: Overview", ":material/trending_up: Trends",
+            ":material/map: Provinces", ":material/menu_book: Subjects",
+            ":material/warning: At-Risk Predictor", ":material/query_stats: Forecast",
+            ":material/smart_toy: ML Models", ":material/bubble_chart: Clusters",
+            ":material/science: Statistics", ":material/database: SQL Explorer",
         ],
         label_visibility="collapsed",
     )
@@ -106,7 +108,7 @@ def kpi_row(df: pd.DataFrame, year: int) -> None:
 
 
 def page_overview(df: pd.DataFrame, year: int) -> None:
-    st.title("📊 ZA-STEM Insights")
+    st.title(":material/analytics: ZA-STEM Insights")
     st.subheader(f"South African Matric Performance — {year} Snapshot")
     st.divider()
     kpi_row(df, year)
@@ -147,7 +149,7 @@ def page_overview(df: pd.DataFrame, year: int) -> None:
 
 
 def page_trends(df: pd.DataFrame, year: int, subject_type: str) -> None:
-    st.title("📈 National Trends")
+    st.title(":material/trending_up: National Trends")
     st.divider()
 
     stype = None if subject_type == "All" else subject_type
@@ -188,7 +190,7 @@ def page_trends(df: pd.DataFrame, year: int, subject_type: str) -> None:
 
 
 def page_provinces(df: pd.DataFrame, year: int) -> None:
-    st.title("🗺️ Provincial Performance")
+    st.title(":material/map: Provincial Performance")
     st.divider()
 
     prov = province_summary(df, year=year)
@@ -227,7 +229,7 @@ def page_provinces(df: pd.DataFrame, year: int) -> None:
 
 
 def page_subjects(df: pd.DataFrame, year: int, subject_type: str) -> None:
-    st.title("📚 Subject Performance")
+    st.title(":material/menu_book: Subject Performance")
     st.divider()
 
     ranking = subject_ranking(df, year=year)
@@ -275,7 +277,7 @@ def page_subjects(df: pd.DataFrame, year: int, subject_type: str) -> None:
 
 
 def page_predictor(df: pd.DataFrame) -> None:
-    st.title("⚠️ At-Risk Predictor")
+    st.title(":material/warning: At-Risk Predictor")
     st.caption("ML model (RandomForest) trained on 10 years of matric data")
     st.divider()
 
@@ -366,7 +368,7 @@ def page_predictor(df: pd.DataFrame) -> None:
 
 
 def page_forecast(df: pd.DataFrame) -> None:
-    st.title("🔮 Pass Rate Forecast")
+    st.title(":material/query_stats: Pass Rate Forecast")
     st.caption("Holt Exponential Smoothing (ETS) time series — 3-year projection · MASTERY tier")
     st.divider()
 
@@ -426,7 +428,7 @@ def page_forecast(df: pd.DataFrame) -> None:
 
 
 def page_ml_models(df: pd.DataFrame) -> None:
-    st.title("🤖 ML Model Comparison")
+    st.title(":material/smart_toy: ML Model Comparison")
     st.caption("Logistic Regression vs Random Forest vs XGBoost · 5-fold CV · SHAP · MASTERY tier")
     st.divider()
 
@@ -481,7 +483,7 @@ def page_ml_models(df: pd.DataFrame) -> None:
 
 
 def page_clusters(df: pd.DataFrame) -> None:
-    st.title("🧩 Province Clustering")
+    st.title(":material/bubble_chart: Province Clustering")
     st.caption("K-Means unsupervised learning · silhouette analysis · PCA projection · TUTOR tier")
     st.divider()
 
@@ -524,7 +526,7 @@ def page_clusters(df: pd.DataFrame) -> None:
 
 
 def page_statistics(df: pd.DataFrame) -> None:
-    st.title("🧪 Statistical Hypothesis Testing")
+    st.title(":material/science: Statistical Hypothesis Testing")
     st.caption("Formal inference at α = 0.05 · t-test, ANOVA, correlation, regression · TUTOR tier")
     st.divider()
 
@@ -547,7 +549,7 @@ def page_statistics(df: pd.DataFrame) -> None:
 
 
 def page_sql_explorer(df: pd.DataFrame) -> None:
-    st.title("🗄️ SQL Explorer")
+    st.title(":material/database: SQL Explorer")
     st.caption("The dataset is loaded into a SQLite database — run live, read-only SQL against it")
     st.divider()
 
@@ -594,25 +596,25 @@ def main() -> None:
     df = get_data()
     page, selected_year, selected_type = sidebar(df)
 
-    if page == "🏠 Overview":
+    if page == ":material/dashboard: Overview":
         page_overview(df, selected_year)
-    elif page == "📈 Trends":
+    elif page == ":material/trending_up: Trends":
         page_trends(df, selected_year, selected_type)
-    elif page == "🗺️ Provinces":
+    elif page == ":material/map: Provinces":
         page_provinces(df, selected_year)
-    elif page == "📚 Subjects":
+    elif page == ":material/menu_book: Subjects":
         page_subjects(df, selected_year, selected_type)
-    elif page == "⚠️ At-Risk Predictor":
+    elif page == ":material/warning: At-Risk Predictor":
         page_predictor(df)
-    elif page == "🔮 Forecast":
+    elif page == ":material/query_stats: Forecast":
         page_forecast(df)
-    elif page == "🤖 ML Models":
+    elif page == ":material/smart_toy: ML Models":
         page_ml_models(df)
-    elif page == "🧩 Clusters":
+    elif page == ":material/bubble_chart: Clusters":
         page_clusters(df)
-    elif page == "🧪 Statistics":
+    elif page == ":material/science: Statistics":
         page_statistics(df)
-    elif page == "🗄️ SQL Explorer":
+    elif page == ":material/database: SQL Explorer":
         page_sql_explorer(df)
 
 
