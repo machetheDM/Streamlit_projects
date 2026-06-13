@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Generated data & models (reproducible via generate_sample_data.py / model training)
+data/raw/*.csv
+data/processed/*.csv
+data/processed/*.pkl
+data/processed/*.png
+
+# Keep the folder structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Streamlit / OS
+.DS_Store
+smoke_out.txt
+_smoke_test.py

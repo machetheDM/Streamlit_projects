@@ -1,22 +1,33 @@
 """
-model.py  —  Learner 4 module
--------------------------------
-RandomForest model that predicts whether a province-subject combination
-will fall BELOW the national STEM pass-rate threshold in the next year.
+model.py  —  Supervised ML (MASTERY tier)
+--------------------------------------------
+Supervised ML to predict whether a province-subject combination will fall
+BELOW the national STEM pass-rate threshold in the next year.
 Binary classification: 0 = On Track  |  1 = At Risk
 
-Contributor: SKYLearn-Innovation Learner 4
-Mentor: Dingaan Mahlatse Machethe
+Compares 3 algorithms (Logistic Regression, Random Forest, XGBoost) with
+stratified K-fold cross-validation, ROC-AUC, and SHAP explainability.
+
+Base model (RandomForest): SKYLearn-Innovation Learner 4 (high school)
+Multi-model comparison, K-fold CV, SHAP explainability: Dingaan Mahlatse
+Machethe (SKYLearn-Innovation head — MSc Data Science, UEL)
 """
 
 import os
 import pickle
+import time
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, roc_auc_score
-from sklearn.preprocessing import LabelEncoder
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.metrics import (
+    classification_report, roc_auc_score, roc_curve,
+    confusion_matrix, precision_score, recall_score, f1_score, accuracy_score,
+)
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
+from xgboost import XGBClassifier
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "processed", "rf_model.pkl")
 ENCODERS_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "processed", "label_encoders.pkl")
@@ -133,6 +144,126 @@ def feature_importance(clf, feature_names: list[str]) -> pd.DataFrame:
     return (
         pd.DataFrame({"feature": feature_names, "importance": clf.feature_importances_})
         .sort_values("importance", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# MASTERY tier — multi-model comparison, cross-validation, SHAP
+# ─────────────────────────────────────────────────────────────
+
+FEATURE_COLS = [
+    "year", "province_code_enc", "subject_enc", "subject_type_enc",
+    "registered", "absentee_rate",
+]
+
+
+def get_model_zoo() -> dict:
+    """
+    Return the 3 candidate classifiers.
+    Logistic Regression is wrapped in a pipeline with StandardScaler since
+    it is scale-sensitive (tree models are not).
+    """
+    return {
+        "Logistic Regression": Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=RANDOM_STATE)),
+        ]),
+        "Random Forest": RandomForestClassifier(
+            n_estimators=200, max_depth=8, class_weight="balanced",
+            random_state=RANDOM_STATE, n_jobs=-1,
+        ),
+        "XGBoost": XGBClassifier(
+            n_estimators=300, max_depth=5, learning_rate=0.05,
+            subsample=0.9, colsample_bytree=0.9, eval_metric="logloss",
+            random_state=RANDOM_STATE, n_jobs=-1,
+        ),
+    }
+
+
+def compare_models(df: pd.DataFrame, n_splits: int = 5) -> dict:
+    """
+    Train and compare all models with stratified K-fold cross-validation.
+    Returns a dict with a comparison DataFrame, fitted models, test split,
+    and ROC curve data for each model.
+    """
+    X, y, encoders = build_features(df)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=RANDOM_STATE, stratify=y
+    )
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+    rows, fitted, roc_data = [], {}, {}
+
+    for name, model in get_model_zoo().items():
+        cv_scores = cross_val_score(model, X_train, y_train, cv=skf, scoring="roc_auc", n_jobs=-1)
+
+        t0 = time.perf_counter()
+        model.fit(X_train, y_train)
+        train_time = time.perf_counter() - t0
+
+        y_pred = model.predict(X_test)
+        y_prob = model.predict_proba(X_test)[:, 1]
+
+        fpr, tpr, _ = roc_curve(y_test, y_prob)
+        roc_data[name] = {"fpr": fpr, "tpr": tpr, "auc": roc_auc_score(y_test, y_prob)}
+        fitted[name] = model
+
+        rows.append({
+            "Model": name,
+            "CV ROC-AUC (mean)": round(cv_scores.mean(), 4),
+            "CV ROC-AUC (std)": round(cv_scores.std(), 4),
+            "Test Accuracy": round(accuracy_score(y_test, y_pred), 4),
+            "Test Precision": round(precision_score(y_test, y_pred), 4),
+            "Test Recall": round(recall_score(y_test, y_pred), 4),
+            "Test F1": round(f1_score(y_test, y_pred), 4),
+            "Test ROC-AUC": round(roc_auc_score(y_test, y_prob), 4),
+            "Train Time (s)": round(train_time, 3),
+        })
+
+    comparison = pd.DataFrame(rows).sort_values("Test ROC-AUC", ascending=False).reset_index(drop=True)
+    best_name = comparison.iloc[0]["Model"]
+
+    return {
+        "comparison": comparison,
+        "models": fitted,
+        "roc_data": roc_data,
+        "best_model_name": best_name,
+        "best_model": fitted[best_name],
+        "encoders": encoders,
+        "X_train": X_train, "X_test": X_test,
+        "y_train": y_train, "y_test": y_test,
+        "feature_names": FEATURE_COLS,
+    }
+
+
+def confusion(model, X_test: pd.DataFrame, y_test: pd.Series) -> np.ndarray:
+    """Return the 2x2 confusion matrix for a fitted model."""
+    return confusion_matrix(y_test, model.predict(X_test))
+
+
+def shap_importance(model, X_sample: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute mean absolute SHAP values per feature for a tree-based model.
+    Returns a DataFrame sorted by importance. Falls back gracefully if the
+    model type is unsupported by the fast TreeExplainer.
+    """
+    import shap
+
+    try:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_sample)
+        if isinstance(shap_values, list):
+            shap_values = shap_values[1]
+        mean_abs = np.abs(shap_values).mean(axis=0)
+    except Exception:
+        explainer = shap.Explainer(model.predict, X_sample)
+        shap_values = explainer(X_sample).values
+        mean_abs = np.abs(shap_values).mean(axis=0)
+
+    return (
+        pd.DataFrame({"feature": X_sample.columns, "mean_abs_shap": mean_abs})
+        .sort_values("mean_abs_shap", ascending=False)
         .reset_index(drop=True)
     )
 

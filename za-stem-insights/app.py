@@ -24,6 +24,9 @@ from analyse import (
     national_trend, province_summary,
     stem_vs_nonstem, subject_ranking, flag_at_risk,
 )
+from forecast import forecast_series, forecast_all_subjects
+from cluster import build_province_profile, find_optimal_k, cluster_provinces
+from stats_tests import run_all_tests
 
 st.set_page_config(
     page_title="ZA-STEM Insights",
@@ -60,7 +63,11 @@ def sidebar(df: pd.DataFrame) -> tuple:
 
     page = st.sidebar.radio(
         "Navigate",
-        ["🏠 Overview", "📈 Trends", "🗺️ Provinces", "📚 Subjects", "⚠️ At-Risk Predictor"],
+        [
+            "🏠 Overview", "📈 Trends", "🗺️ Provinces", "📚 Subjects",
+            "⚠️ At-Risk Predictor", "🔮 Forecast", "🤖 ML Models",
+            "🧩 Clusters", "🧪 Statistics",
+        ],
         label_visibility="collapsed",
     )
 
@@ -357,6 +364,187 @@ def page_predictor(df: pd.DataFrame) -> None:
         st.plotly_chart(fig, use_container_width=True)
 
 
+def page_forecast(df: pd.DataFrame) -> None:
+    st.title("🔮 Pass Rate Forecast")
+    st.caption("Holt Exponential Smoothing (ETS) time series — 3-year projection · MASTERY tier")
+    st.divider()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        prov_opts = ["National"] + sorted(df["province"].unique())
+        province = st.selectbox("Province", prov_opts)
+    with col2:
+        subj_opts = ["All Subjects"] + sorted(df["subject"].unique())
+        subject = st.selectbox("Subject", subj_opts, index=subj_opts.index("Mathematics") if "Mathematics" in subj_opts else 0)
+
+    horizon = st.slider("Forecast horizon (years)", 1, 5, 3)
+
+    try:
+        res = forecast_series(df, province=province, subject=subject, horizon=horizon)
+    except ValueError as e:
+        st.warning(str(e))
+        return
+
+    hist, fc = res["history"], res["forecast"]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=hist["year"], y=hist["pass_rate"], mode="lines+markers",
+        name="History", line=dict(color=PRIMARY, width=3),
+    ))
+    fig.add_trace(go.Scatter(
+        x=fc["year"], y=fc["forecast"], mode="lines+markers",
+        name="Forecast", line=dict(color=WARN, width=3, dash="dash"),
+    ))
+    fig.add_trace(go.Scatter(
+        x=list(fc["year"]) + list(fc["year"][::-1]),
+        y=list(fc["upper"]) + list(fc["lower"][::-1]),
+        fill="toself", fillcolor="rgba(231,76,60,0.15)",
+        line=dict(color="rgba(255,255,255,0)"), name="95% CI", showlegend=True,
+    ))
+    fig.update_layout(
+        title=f"{res['label']} — Forecast ({fc['method'].iloc[0]})",
+        yaxis_title="Pass Rate (%)", xaxis_title="Year", yaxis_range=[0, 100],
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(fc, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader(f"All-Subject Forecast — Worst Performers ({province})")
+    prov_arg = None if province == "National" else province
+    ranked = forecast_all_subjects(df, province=prov_arg, horizon=horizon)
+    fig2 = px.bar(
+        ranked, x="forecast_pass_rate", y="subject", orientation="h",
+        color="forecast_pass_rate", color_continuous_scale="RdYlGn",
+        range_color=[40, 100], title=f"Projected {ranked['forecast_year'].iloc[0]} Pass Rates",
+        labels={"forecast_pass_rate": "Forecast Pass Rate (%)", "subject": ""},
+    )
+    fig2.add_vline(x=60, line_dash="dash", line_color=WARN)
+    st.plotly_chart(fig2, use_container_width=True)
+
+
+def page_ml_models(df: pd.DataFrame) -> None:
+    st.title("🤖 ML Model Comparison")
+    st.caption("Logistic Regression vs Random Forest vs XGBoost · 5-fold CV · SHAP · MASTERY tier")
+    st.divider()
+
+    from model import compare_models, confusion, shap_importance
+
+    with st.spinner("Training 3 models with cross-validation..."):
+        res = compare_models(df)
+
+    st.subheader("Model Leaderboard")
+    st.dataframe(
+        res["comparison"].style.background_gradient(subset=["Test ROC-AUC"], cmap="Greens"),
+        use_container_width=True, hide_index=True,
+    )
+    st.success(f"Best model: **{res['best_model_name']}** (Test ROC-AUC = {res['comparison'].iloc[0]['Test ROC-AUC']})")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("ROC Curves")
+        fig = go.Figure()
+        for name, rd in res["roc_data"].items():
+            fig.add_trace(go.Scatter(
+                x=rd["fpr"], y=rd["tpr"], mode="lines",
+                name=f"{name} (AUC={rd['auc']:.3f})",
+            ))
+        fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines",
+                                 line=dict(dash="dash", color="gray"), showlegend=False))
+        fig.update_layout(xaxis_title="False Positive Rate", yaxis_title="True Positive Rate")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader(f"Confusion Matrix — {res['best_model_name']}")
+        cm = confusion(res["best_model"], res["X_test"], res["y_test"])
+        fig_cm = px.imshow(
+            cm, text_auto=True, color_continuous_scale="Blues",
+            labels=dict(x="Predicted", y="Actual"),
+            x=["On Track", "At Risk"], y=["On Track", "At Risk"],
+        )
+        st.plotly_chart(fig_cm, use_container_width=True)
+
+    st.divider()
+    st.subheader("SHAP Feature Importance (Explainable AI)")
+    st.caption("Mean absolute SHAP value — how much each feature drives the at-risk prediction")
+    tree_name = "XGBoost" if "XGBoost" in res["models"] else res["best_model_name"]
+    shap_df = shap_importance(res["models"][tree_name], res["X_test"])
+    fig_shap = px.bar(
+        shap_df.sort_values("mean_abs_shap"), x="mean_abs_shap", y="feature",
+        orientation="h", color="mean_abs_shap", color_continuous_scale="Viridis",
+        labels={"mean_abs_shap": "Mean |SHAP|", "feature": ""},
+        title=f"Feature Impact — {tree_name}",
+    )
+    st.plotly_chart(fig_shap, use_container_width=True)
+
+
+def page_clusters(df: pd.DataFrame) -> None:
+    st.title("🧩 Province Clustering")
+    st.caption("K-Means unsupervised learning · silhouette analysis · PCA projection · TUTOR tier")
+    st.divider()
+
+    profile = build_province_profile(df)
+    sil = find_optimal_k(profile)
+
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.subheader("Optimal k")
+        st.dataframe(sil, use_container_width=True, hide_index=True)
+        best_k = int(sil.loc[sil["silhouette"].idxmax(), "k"])
+        k = st.slider("Number of clusters (k)", 2, 6, max(3, best_k) if best_k <= 6 else 3)
+    with col2:
+        st.subheader("Silhouette Score by k")
+        fig_sil = px.line(sil, x="k", y="silhouette", markers=True,
+                          color_discrete_sequence=[PRIMARY])
+        fig_sil.update_layout(yaxis_title="Silhouette Score")
+        st.plotly_chart(fig_sil, use_container_width=True)
+
+    result = cluster_provinces(profile, k=k)
+    labelled = result["labelled"]
+
+    st.divider()
+    var = result["explained_variance"]
+    st.subheader(f"Cluster Map (PCA — {sum(var)*100:.0f}% variance, silhouette={result['silhouette']})")
+    fig = px.scatter(
+        labelled, x="pca_x", y="pca_y", color="cluster_name", text="province",
+        size="stem_pass_rate", hover_data=["stem_pass_rate", "nonstem_pass_rate"],
+        labels={"pca_x": "PC1", "pca_y": "PC2", "cluster_name": "Tier"},
+    )
+    fig.update_traces(textposition="top center")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Province Tiers")
+    st.dataframe(
+        labelled[["province", "cluster_name", "stem_pass_rate", "nonstem_pass_rate",
+                  "absentee_rate", "pass_rate_volatility"]].round(2),
+        use_container_width=True, hide_index=True,
+    )
+
+
+def page_statistics(df: pd.DataFrame) -> None:
+    st.title("🧪 Statistical Hypothesis Testing")
+    st.caption("Formal inference at α = 0.05 · t-test, ANOVA, correlation, regression · TUTOR tier")
+    st.divider()
+
+    results = run_all_tests(df)
+
+    for name, res in results.items():
+        with st.container(border=True):
+            st.subheader(name)
+            cols = st.columns(len(res) - 1)
+            i = 0
+            for k, v in res.items():
+                if k == "conclusion":
+                    continue
+                display = f"{v:.2e}" if "p_value" in k or "_p" in k else v
+                cols[i].metric(k.replace("_", " ").title(), display)
+                i += 1
+            p_key = next((k for k in res if k.endswith("p_value") or k == "pearson_p"), None)
+            significant = p_key and res[p_key] < 0.05
+            (st.success if significant else st.info)(res["conclusion"])
+
+
 def main() -> None:
     df = get_data()
     page, selected_year, selected_type = sidebar(df)
@@ -371,6 +559,14 @@ def main() -> None:
         page_subjects(df, selected_year, selected_type)
     elif page == "⚠️ At-Risk Predictor":
         page_predictor(df)
+    elif page == "🔮 Forecast":
+        page_forecast(df)
+    elif page == "🤖 ML Models":
+        page_ml_models(df)
+    elif page == "🧩 Clusters":
+        page_clusters(df)
+    elif page == "🧪 Statistics":
+        page_statistics(df)
 
 
 if __name__ == "__main__":
