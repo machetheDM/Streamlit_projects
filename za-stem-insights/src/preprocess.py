@@ -25,13 +25,24 @@ REQUIRED_COLUMNS = [
 ]
 
 
+def ensure_raw_data(path: str = RAW_PATH) -> None:
+    """
+    Guarantee the raw CSV exists. If missing (e.g. fresh clone on Streamlit
+    Cloud where data is gitignored), generate it automatically.
+    """
+    if os.path.exists(path):
+        return
+    import importlib.util
+    gen_path = os.path.join(os.path.dirname(__file__), "..", "data", "generate_sample_data.py")
+    spec = importlib.util.spec_from_file_location("generate_sample_data", gen_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main()
+
+
 def load_raw(path: str = RAW_PATH) -> pd.DataFrame:
-    """Load the raw CSV and return a DataFrame."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"Raw data not found at {path}.\n"
-            "Run: python data/generate_sample_data.py"
-        )
+    """Load the raw CSV and return a DataFrame, generating it if absent."""
+    ensure_raw_data(path)
     df = pd.read_csv(path)
     return df
 
