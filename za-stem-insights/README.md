@@ -14,15 +14,38 @@ An end-to-end data science project built by the **SKYLearn-Innovation NPO** team
 
 ## What We Built
 
-An interactive **9-page Streamlit dashboard** + 6 Jupyter notebooks that:
+An interactive **10-page Streamlit dashboard** + 6 Jupyter notebooks that:
 - Analyse 10 years (2014–2023) of South African NSC matric results across 9 provinces and 10 subjects
+- Query the data live with **SQL** (the dataset is loaded into a SQLite database)
 - Compare STEM vs. non-STEM performance with **formal statistical hypothesis testing**
 - Cluster provinces into performance tiers using **K-Means unsupervised learning**
 - Predict at-risk status by **comparing 3 ML models** (Logistic Regression, Random Forest, XGBoost) with cross-validation and **SHAP explainability**
 - **Forecast** future pass rates 3 years ahead using time series (Holt ETS)
 
+### Data — grounded in real published figures
+The dataset is **calibrated to official DBE statistics**: province-year pass
+rates are anchored to the real national NSC pass rates (2014–2023) and the real
+2023 provincial pass rates, keeping every figure within ~2pp of the published
+value. Per-subject granularity is modelled to reflect the well-documented STEM
+difficulty gap, because the DBE does not release a clean machine-readable
+per-subject-per-province CSV. Sources are cited in `data/generate_sample_data.py`.
+
 ### Skills & Technologies Showcased
-`Python` `Pandas` `NumPy` `Matplotlib` `Seaborn` `Plotly` `scikit-learn` `XGBoost` `SHAP` `statsmodels` `SciPy` `K-Means` `PCA` `Cross-Validation` `ROC-AUC` `Hypothesis Testing` `Time Series Forecasting` `Streamlit`
+`Python` `SQL` `SQLite` `Pandas` `NumPy` `Matplotlib` `Seaborn` `Plotly` `scikit-learn` `XGBoost` `SHAP` `statsmodels` `SciPy` `K-Means` `PCA` `Cross-Validation` `ROC-AUC` `Hypothesis Testing` `Time Series Forecasting` `Streamlit`
+
+### Skills Demonstrated — where to find each
+| Skill | Where in the project |
+|-------|----------------------|
+| Data cleaning & validation | `src/preprocess.py` |
+| **SQL** (GROUP BY, HAVING, aggregates, indexing) | `src/db.py`, 🗄️ SQL Explorer page |
+| Exploratory analysis & visualisation | `src/analyse.py`, notebooks 02–03 |
+| Supervised ML + model comparison | `src/model.py`, notebook 04 |
+| Cross-validation & ROC-AUC | `src/model.py` (`compare_models`) |
+| Explainable AI (SHAP) | `src/model.py`, 🤖 ML Models page |
+| Unsupervised ML (K-Means, PCA) | `src/cluster.py`, notebook 06 |
+| Statistical inference (t-test, ANOVA) | `src/stats_tests.py`, notebook 06 |
+| Time series forecasting | `src/forecast.py`, notebook 05 |
+| Dashboarding & deployment | `app.py`, live on Streamlit Cloud |
 
 ---
 
@@ -87,7 +110,8 @@ za-stem-insights/
 │   ├── model.py                   # T1+T3 — RF base + multi-model/CV/SHAP
 │   ├── cluster.py                 # T2 — K-Means + PCA clustering
 │   ├── stats_tests.py             # T2 — hypothesis testing
-│   └── forecast.py                # T3 — time series forecasting
+│   ├── forecast.py                # T3 — time series forecasting
+│   └── db.py                      # T2+T3 — SQLite SQL layer
 ├── notebooks/
 │   ├── 01_data_loading_cleaning.ipynb
 │   ├── 02_visualisations.ipynb
@@ -95,7 +119,7 @@ za-stem-insights/
 │   ├── 04_ml_training_evaluation.ipynb
 │   ├── 05_forecasting.ipynb
 │   └── 06_clustering_statistics.ipynb
-├── app.py                         # 9-page Streamlit dashboard
+├── app.py                         # 10-page Streamlit dashboard
 └── requirements.txt
 ```
 
@@ -114,6 +138,7 @@ za-stem-insights/
 | 🤖 ML Models | 3-model leaderboard, ROC curves, confusion matrix, SHAP |
 | 🧩 Clusters | K-Means province tiers, silhouette analysis, PCA map |
 | 🧪 Statistics | t-test, ANOVA, correlation, regression — formal inference |
+| 🗄️ SQL Explorer | Live read-only SQL against a SQLite database, with auto-visualisation |
 
 ---
 

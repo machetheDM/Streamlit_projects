@@ -27,6 +27,7 @@ from analyse import (
 from forecast import forecast_series, forecast_all_subjects
 from cluster import build_province_profile, find_optimal_k, cluster_provinces
 from stats_tests import run_all_tests
+import db
 
 st.set_page_config(
     page_title="ZA-STEM Insights",
@@ -66,7 +67,7 @@ def sidebar(df: pd.DataFrame) -> tuple:
         [
             "🏠 Overview", "📈 Trends", "🗺️ Provinces", "📚 Subjects",
             "⚠️ At-Risk Predictor", "🔮 Forecast", "🤖 ML Models",
-            "🧩 Clusters", "🧪 Statistics",
+            "🧩 Clusters", "🧪 Statistics", "🗄️ SQL Explorer",
         ],
         label_visibility="collapsed",
     )
@@ -545,6 +546,50 @@ def page_statistics(df: pd.DataFrame) -> None:
             (st.success if significant else st.info)(res["conclusion"])
 
 
+def page_sql_explorer(df: pd.DataFrame) -> None:
+    st.title("🗄️ SQL Explorer")
+    st.caption("The dataset is loaded into a SQLite database — run live, read-only SQL against it")
+    st.divider()
+
+    db.build_database()
+
+    col1, col2 = st.columns([2, 1])
+    with col2:
+        with st.container(border=True):
+            st.subheader("Table: `matric`")
+            st.dataframe(db.table_schema(), use_container_width=True, hide_index=True)
+
+    with col1:
+        st.subheader("Query")
+        example = st.selectbox("Load an example query", list(db.EXAMPLE_QUERIES.keys()))
+        if "sql_text" not in st.session_state:
+            st.session_state.sql_text = db.EXAMPLE_QUERIES[example]
+        if st.button("Load selected example"):
+            st.session_state.sql_text = db.EXAMPLE_QUERIES[example]
+
+        sql = st.text_area("SQL (SELECT only)", key="sql_text", height=180)
+        run_btn = st.button("Run query", type="primary")
+
+    if run_btn:
+        try:
+            result = db.run_query(sql)
+            st.success(f"Returned {len(result):,} rows × {len(result.columns)} columns")
+            st.dataframe(result, use_container_width=True, hide_index=True)
+
+            num_cols = result.select_dtypes("number").columns
+            cat_cols = [c for c in result.columns if c not in num_cols]
+            if len(result) > 1 and len(num_cols) >= 1 and len(cat_cols) >= 1:
+                fig = px.bar(
+                    result, x=cat_cols[0], y=num_cols[-1],
+                    color=cat_cols[1] if len(cat_cols) > 1 else None,
+                    title="Auto-visualisation of query result",
+                    color_discrete_sequence=[PRIMARY, ACCENT, WARN],
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"Query error: {e}")
+
+
 def main() -> None:
     df = get_data()
     page, selected_year, selected_type = sidebar(df)
@@ -567,6 +612,8 @@ def main() -> None:
         page_clusters(df)
     elif page == "🧪 Statistics":
         page_statistics(df)
+    elif page == "🗄️ SQL Explorer":
+        page_sql_explorer(df)
 
 
 if __name__ == "__main__":
